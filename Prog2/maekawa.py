@@ -9,48 +9,56 @@ from vector_clocks import VectorClockNode
 # Maekawa algorithm node 
 class MaekawaNode(VectorClockNode):
 
-    def __init__(self, node_id, nodes, sets):
+    def __init__(self, node_id, nodes, set):
         super().__init__(node_id, nodes)
-        self.sets = sets
+        self.set = set
         self.request_queue = []  # Queue of requests
         self.locked = False  # Lock status (in critical section or not)
         self.voted_for = None  # Node this process has voted for
-
-    # Override to only send messages to nodes in the set
-    def send_multicast(self, message):
-        for i in range(len(self.sets[i])):
-            if i != self.node_id:
-                self.send_message(message, i)
+        self.grant_count = 0
     
     def MLockMutex(self):
         self.send_multicast("REQUEST")
 
     def MReleaseMutex(self):
-        self.locked = False
-        self.voted_for = None
-        self.send_multicast("RELEASE")
-
-    def handle_request(self, sender_id, received_vc):
-        self.update_vector_clock(received_vc)
-        # If this process hasn't voted yet, or the request is higher priority
-        if self.voted_for is None:
-            self.voted_for = sender_id
-            self.send_message("GRANT", sender_id)
+        if self.locked == True:
+            self.locked = False
+            self.send_multicast("RELEASE")
+            self.grant_count = 0
         else:
-            self.request_queue.append(sender_id)
+            print(f"P{self.node_id} cannot release a mutex it doesn't have")
+
+    # TODO: check timing?
+    def handle_request(self, node_id, received_vc):
+        if self.locked:
+            print(f"P{self.node_id} added P{node_id} to request queue because currently in CS")
+            self.request_queue.append(node_id)
+        elif self.voted_for != None:
+            print(f"P{self.node_id} added P{node_id} to request queue because vote is given to P{self.voted_for}")
+            self.request_queue.append(node_id)
+        else:
+            self.voted_for = node_id
+            self.send_message("GRANT", node_id)
 
     def handle_grant(self):
-        # When a node receives grants from all quorum members, it enters critical section
-        if len(self.request_queue) == len(self.sets) - 1:
+        self.grant_count += 1
+        if self.grant_count == len(self.set):
             self.locked = True
-            print(f"Process {self.node_id} enters the critical section.")
+            print(f"P{self.node_id} enters the critical section.")
 
     def handle_release(self):
         if self.request_queue:
-            # Dequeue the next request and grant permission
             next_request = self.request_queue.pop(0)
             self.voted_for = next_request
             self.send_message("GRANT", next_request)
+        else:
+            self.voted_for = None
+
+    # Override multicast to only send messages to nodes in the set
+    def send_multicast(self, message):
+        for i in self.set:
+            if i != self.node_id:
+                self.send_message(message, i)
 
     # Overriding run_node method to handle Maekawa-specific messages
     def run_node(self):
@@ -58,21 +66,18 @@ class MaekawaNode(VectorClockNode):
             s.bind(self.get_socket(self.node_id))
             while True:
                 data, addr = s.recvfrom(1024)
-                message, received_vc = data.decode().split(';')
+                node_id, message, received_vc = data.decode().split(';')
                 received_vc = list(map(int, received_vc.strip('[]').split(',')))
+                print(f"P{self.node_id} received message from P{node_id}: '{message}'")
+                self.update_vector_clock(received_vc)
 
                 # Process incoming messages
                 if message == "REQUEST":
-                    sender_id = int(addr[1])  # Assuming port represents node ID
-                    self.handle_request(sender_id, received_vc)
+                    self.handle_request(node_id, received_vc)
                 elif message == "GRANT":
                     self.handle_grant()
                 elif message == "RELEASE":
                     self.handle_release()
-                else:
-                    # Handle vector clock updates and comparison
-                    self.update_vector_clock(received_vc)
-                    self.compare_vector_clocks(received_vc)
 
     def run(self):
         threading.Thread(target=self.run_node).start()
@@ -86,7 +91,7 @@ def read_network_file(network_file):
             socket_info = line.strip().split()
             address, port = socket_info[1].split(":")
             network.append([address, int(port)])
-            set = socket_info[2].split(",")
+            set = list(map(int, socket_info[2].split(",")))
             sets.append(set)
     print(network)
     print(sets)
@@ -97,7 +102,7 @@ def create_nodes(network_file):
     network, sets = read_network_file(network_file)
     nodes = [None] * len(network)
     for i in range(len(network)):
-        nodes[i] = MaekawaNode(i, network, sets)
+        nodes[i] = MaekawaNode(i, network, sets[i])
     return nodes
 
 # Simulating 3 nodes on different ports
@@ -109,3 +114,21 @@ if __name__ == "__main__":
     # Run each node
     for node in nodes:
         node.run()
+
+    nodes[0].MLockMutex()  # P0 requests the critical section
+    time.sleep(1)
+
+    nodes[1].MLockMutex()  # P1 requests the critical section
+    time.sleep(1)
+
+    nodes[2].MLockMutex()  # P2 requests the critical section
+    time.sleep(1)
+
+    nodes[0].MReleaseMutex()  # P0 releases the critical section
+    time.sleep(1)
+
+    nodes[1].MReleaseMutex()  # P1 releases the critical section
+    time.sleep(1)
+
+    nodes[2].MReleaseMutex()  # P2 releases the critical section
+    time.sleep(1)
