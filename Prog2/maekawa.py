@@ -21,12 +21,13 @@ class MaekawaNode(VectorClockNode):
         self.send_multicast("REQUEST")
 
     def MReleaseMutex(self):
+        print(f"!!! P{self.node_id} leaves the critical section")
         if self.locked == True:
             self.locked = False
             self.send_multicast("RELEASE")
             self.grant_count = 0
         else:
-            print(f"P{self.node_id} cannot release a mutex it doesn't have")
+            print(f"P{self.node_id} cannot release a mutex it doesn't have?")
 
     # TODO: check timing?
     def handle_request(self, node_id, received_vc):
@@ -42,23 +43,25 @@ class MaekawaNode(VectorClockNode):
 
     def handle_grant(self):
         self.grant_count += 1
+        print(f"P{self.node_id} received {self.grant_count}/{len(self.set)} grants")
         if self.grant_count == len(self.set):
             self.locked = True
-            print(f"P{self.node_id} enters the critical section.")
+            print(f"!!! P{self.node_id} enters the critical section.")
 
     def handle_release(self):
         if self.request_queue:
             next_request = self.request_queue.pop(0)
             self.voted_for = next_request
+            print(f"P{self.node_id} Voting for P{next_request}")
             self.send_message("GRANT", next_request)
         else:
+            print(f"P{self.node_id} has nobody to vote for")
             self.voted_for = None
 
     # Override multicast to only send messages to nodes in the set
     def send_multicast(self, message):
         for i in self.set:
-            if i != self.node_id:
-                self.send_message(message, i)
+            self.send_message(message, i)
 
     # Overriding run_node method to handle Maekawa-specific messages
     def run_node(self):
