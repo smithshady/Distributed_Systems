@@ -14,14 +14,14 @@ mutex = CDistributedMutex()
 mutex.GlobalInitialize(int(sys.argv[1]), hosts)
 mutex.MInitialize()
 
-time.sleep(int(sys.argv[2]))
-for i in range(int(sys.argv[3])):
+for i in range(int(sys.argv[2])):
     time.sleep(random.randint(1, 15))
 
     mutex.MLockMutex()
-    print("Process %d reached CS on loop %d." % (int(sys.argv[1]), i + 1))
     time.sleep(3)
     mutex.MReleaseMutex()
+
+print("Process %s finished %s CS loops." % (sys.argv[1], sys.argv[2]))
 
 mutex.MCleanup()
 mutex.QuitAndCleanUp()
