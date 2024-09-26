@@ -35,8 +35,8 @@ class CDistributedMutex(VectorClockNode):
     def __init__(self):
         pass
 
-    def GlobalInitialize(self, thisHost, InetSocketAddress):
-        super().__init__(thisHost, InetSocketAddress)
+    def GlobalInitialize(self, thisHost, network):
+        super().__init__(thisHost, network)
         # start message handling thread
         self.thread = threading.Thread(target=self.run_message_handler).start()
         # create quorums | TODO: write algorithm
@@ -76,10 +76,10 @@ class CDistributedMutex(VectorClockNode):
 
     def handle_request(self, node_id, received_vc):
         if self.locked:
-            print(f"Added P{node_id} to request queue because currently in CS")
+            # print(f"Added P{node_id} to request queue because currently in CS")
             self.request_queue.append(node_id)
         elif self.voted_for != None:
-            print(f"Added P{node_id} to request queue because vote is given to P{self.voted_for}")
+            # print(f"Added P{node_id} to request queue because vote is given to P{self.voted_for}")
             self.request_queue.append(node_id)
         else:
             self.voted_for = node_id
@@ -87,7 +87,7 @@ class CDistributedMutex(VectorClockNode):
 
     def handle_grant(self):
         self.grant_count += 1
-        print(f"Received {self.grant_count}/{len(self.quorum)} grants")
+        # print(f"Received {self.grant_count}/{len(self.quorum)} grants")
         if self.grant_count == len(self.quorum):
             self.locked = True
             self.lock_event.set() 
@@ -96,10 +96,10 @@ class CDistributedMutex(VectorClockNode):
         if self.request_queue:
             next_request = self.request_queue.pop(0)
             self.voted_for = next_request
-            print(f"Voting for P{next_request}")
+            # print(f"Voting for P{next_request}")
             self.send_message("GRANT", int(next_request))
         else:
-            print(f"Nobody to vote for, vote is free")
+            # print(f"Nobody to vote for, vote is free")
             self.voted_for = None
 
     def run_message_handler(self):
@@ -112,7 +112,6 @@ class CDistributedMutex(VectorClockNode):
                 received_vc = list(map(int, received_vc.strip('[]').split(',')))
                 # print(f"P{self.node_id} received message from P{node_id}: '{message}'")
                 self.update_vector_clock(received_vc)
-
                 # Process incoming messages
                 if message == "REQUEST":
                     self.handle_request(int(node_id), received_vc)
